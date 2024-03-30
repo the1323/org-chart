@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Single Root Node Org Chart</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-org-chart@3.1.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-flextree@2.1.2/build/d3-flextree.js"></script>
+  <style>
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.4);
+    }
+
+    .modal-content {
+      background-color: #fefefe;
+      margin: 15% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 30%;
+    }
+
+    .close {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    .close:hover,
+    .close:focus {
+      color: black;
+      text-decoration: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div>
+  <button onclick="addRootNode()">Add Root Node</button>
+  <button onclick="chart.expandAll().fit()">expandAll</button>
+  <button onclick="chart.collapseAll().fit()">collapseAll</button>
+
+  <button onclick="chart.exportImg()">Export Current</button>
+  <button onclick="chart.exportImg({full:true})">Export Full</button>
+  <button onclick="chart.exportSvg()">Export SVG</button>
+  <button onclick="exportCSV()">Export CSV</button>
+</div>
+<div>
+  <input type="search" placeholder="search by name" oninput="filterChart(event)" />
+</div>
+<div class="chart-container"></div>
+
+<!-- Modal -->
+<div id="editModal" class="modal">
+  <!-- Modal content -->
+  <div class="modal-content">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <h2>Edit Node Information</h2>
+    <label for="nodeName">Node Name:</label><br>
+    <input type="text" id="nodeName"><br>
+    <label for="nodePosition">Node Position:</label><br>
+    <input type="text" id="nodePosition"><br>
+    <label for="nodeFeature1">Feature 1:</label><br> <!-- New feature 1 -->
+    <input type="text" id="nodeFeature1"><br>
+    <label for="nodeFeature2">Feature 2:</label><br> <!-- New feature 2 -->
+    <input type="text" id="nodeFeature2"><br>
+    <button onclick="saveChanges()">Save</button>
+    <button onclick="addChildNode()">Add Child Node</button>
+    <button onclick="removeNode()">Remove Node</button>
+  </div>
+</div>
+
+<script>
+  var nodeID = 1;
+  var chart = null;
+  var selectedNode = null;
+
+  function filterChart(e) {
+    // Get input value
+    const value = e.srcElement.value;
+
+    // Clear previous higlighting
+    chart.clearHighlighting();
+
+    // Get chart nodes
+    const data = chart.data();
+
+    // Mark all previously expanded nodes for collapse
+    data.forEach((d) => (d._expanded = false));
+
+    // Loop over data and check if input value matches any name
+    data.forEach((d) => {
+      if (value != '' && d.name.toLowerCase().includes(value.toLowerCase())) {
+        // If matches, mark node as highlighted
+        d._highlighted = true;
+        d._expanded = true;
+      }
+    });
+
+    // Update data and rerender graph
+    chart.data(data).render().fit();
+
+    console.log('filtering chart', e.srcElement.value);
+  }
+
+  function extractChartDataForCSV() {
+    const chartData = chart.data();
+    const csvData = [];
+
+    // Push header row
+    csvData.push(['ID', 'ParentNodeID', 'Name', 'Position', 'Feature 1', 'Feature 2']);
+
+    // Extract data for CSV
+    chartData.forEach(node => {
+        const { id, parentId, name, position, feature1, feature2 } = node;
+        csvData.push([id, parentId || '', name, position, feature1, feature2]);
+    });
+    console.log(csvData)
+    return csvData;
+}
+
+
+  function convertToCSV(data) {
+     let csvContent = "data:text/csv;charset=utf-8," + data.map(e => e.join(",")).join("\n");
+     return csvContent;
+    }
+
+
+  function exportCSV() {
+    const chartData = extractChartDataForCSV();
+    const csvContent = convertToCSV(chartData);
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'org_chart_data.csv');
+    document.body.appendChild(link);
+    link.click();
+  }
+
+  function addRootNode() {
+    if (!chart) {
+      const rootData = {
+        id: 'root',
+        name: 'Root Node',
+        position: 'Root Position',
+        feature1: 'Feature 1', // New feature 1
+        feature2: 'Feature 2', // New feature 2
+      };
+      chart = new d3.OrgChart()
+        .nodeHeight((d) => 85 + 25)
+        .nodeWidth((d) => 220 + 2)
+        .childrenMargin((d) => 50)
+        .compactMarginBetween((d) => 35)
+        .compactMarginPair((d) => 30)
+        .neighbourMargin((a, b) => 20)
+        .nodeContent(function (d, i, arr, state) {
+          const color = '#FFFFFF';
+          const imageDiffVert = 25 + 2;
+          return `
+                <div style='width:${
+            d.width
+          }px;height:${d.height}px;padding-top:${imageDiffVert - 2}px;padding-left:1px;padding-right:1px'>
+                        <div style="font-family: 'Inter', sans-serif;background-color:${color};  margin-left:-1px;width:${d.width - 2}px;height:${d.height - imageDiffVert}px;border-radius:10px;border: 1px solid #E4E2E9">
+                            <div style="display:flex;justify-content:flex-end;margin-top:5px;margin-right:8px">#${
+            d.data.id
+          }</div>
+                            <div style="margin-top:${-imageDiffVert - 20}px;">  <div style="font-size:15px;color:#08011E;margin-left:20px;margin-top:35px">  ${
+            d.data.name
+          } </div>
+                            <div style="margin-left:20px;margin-top:3px;font-size:12px;"> ${
+            d.data.position
+          } </div>
+                            <div style="font-size:10px;margin-left:20px;margin-top:3px;"> ${
+            d.data.feature1
+          } </div>
+                            <div style="font-size:10px;margin-left:20px;margin-top:3px;"> ${
+            d.data.feature2
+          } </div>
+                            </div>
+                            <div style="position: absolute; bottom: 5px; right: 5px;">
+                              <button onclick="openModal('${d.data.id}', '${d.data.name}', '${d.data.position}', '${d.data.feature1}', '${d.data.feature2}')">Edit</button>
+                            </div>
+                        </div>
+                    </div>
+                            `;
+        })
+        .container('.chart-container')
+        .data([rootData])
+        .render();
+    }
+  }
+
+  function openModal(nodeID, nodeName, nodePosition, nodeFeature1, nodeFeature2) {
+    selectedNode = nodeID;
+    document.getElementById('nodeName').value = nodeName;
+    document.getElementById('nodePosition').value = nodePosition;
+    document.getElementById('nodeFeature1').value = nodeFeature1;
+    document.getElementById('nodeFeature2').value = nodeFeature2;
+    document.getElementById('editModal').style.display = 'block';
+  }
+
+  function closeModal() {
+    document.getElementById('editModal').style.display = 'none';
+  }
+
+  function saveChanges() {
+    const newName = document.getElementById('nodeName').value;
+    const newPosition = document.getElementById('nodePosition').value;
+    const newFeature1 = document.getElementById('nodeFeature1').value;
+    const newFeature2 = document.getElementById('nodeFeature2').value;
+    chart.data().forEach(obj => {
+      if (obj.id === selectedNode) {
+        obj.name = newName;
+        obj.position = newPosition;
+        obj.feature1 = newFeature1;
+        obj.feature2 = newFeature2;
+      }
+    });
+    // Re-render the chart with updated data
+    chart.render();
+
+    // Close the modal after saving changes
+    closeModal();
+  }
+
+  function removeNode() {
+    if (selectedNode !== 'root') {
+      chart.removeNode(selectedNode);
+      closeModal(); // Close the modal after removing the node
+    } else {
+      alert("Cannot remove the root node!");
+    }
+  }
+
+  function addChildNode() {
+    const childData = {
+      id: 'id_' + nodeID,
+      parentId: selectedNode,
+      name: 'Child Node ' + nodeID,
+      position: 'Child Position ' + nodeID,
+      feature1: 'Feature 1', // New feature 1
+      feature2: 'Feature 2', // New feature 2
+    };
+    chart.addNode(childData).render();
+    nodeID++;
+    closeModal(); // Close the modal after adding child node
+  }
+</script>
+</body>
+</html>
